@@ -1,0 +1,97 @@
+* Programa de Aplicacion del Proxy Mean Test para la Identificacion de Pobreza Monetaria
+* Ministerio de Desarrollo Social de Paraguay
+* Version: Enero 2020
+* Autora: Lyliana Gayoso de Ervin
+*===================================================================================================================
+	clear all
+	set more off
+	pause on
+
+/*=======================================================
+                    00: Directory setup                                             
+=========================================================*/
+	global dir      "C:\Users\lylig\Documents\Consultorias\2024\Unicef\Archivos Finales"
+	global results  "$dir\results"
+	global data     "$dir\data" 
+	
+	use "$results\IPM_PMT_base_2022_cleaned_vars.dta", clear
+	
+	*se restringe la base al dominio metropolitano
+	keep if dominio==0
+
+/*=======================================================
+           01: CONSTRUCCION DE INDICADORES DEL PMT
+=========================================================*/
+
+//creacion variables categoricas VIVIENDA
+	gen cat_agua_proveedor_beber=(tipo_agua_proveedor_beber==1 | tipo_agua_proveedor_beber==5 | tipo_agua_proveedor_beber==11) if tipo_agua_proveedor_beber!=.
+	gen cat_combustible=(tipo_combustible==2 | tipo_combustible==4 | tipo_combustible==7) if tipo_combustible!=.
+
+//creacion variables categoricas JEFE
+	gen jefe_cat_empleo= (inrange(jefe_tipo_empleo,1,3)) if jefe_tipo_empleo!=. 
+
+//creacion variables categoricas HOGAR
+	gen hh_lndormitorios_pc=ln(nro_dormitorios/totpers)
+	gen hh_lntotpers=ln(totpers)
+	gen hh_porc_0a14 = (nro_5menos + nro_6a14)/totpers
+	gen hh_porc_seguro=nro_tiene_seguro/totpers
+	gen hh_porc_trabajan=nro_trabajo/totpers
+	
+global metvars = "cat_agua_proveedor_beber cat_combustible jefe_cat_empleo jefe_anios_estudio hh_lndormitorios_pc hh_lntotpers hh_porc_0a14 hh_porc_seguro hh_porc_trabajan tiene_acondicionador_aire tiene_auto_camion tiene_cocina_elec tiene_computadora tiene_horno_microondas tiene_lavarropas tiene_tableta tiene_termocalefon tiene_tv_cable"
+
+sum $metvars
+	
+/*=======================================================
+              05: IMPLEMENTACION DEL PMT                                              
+=========================================================*/
+//Primero se definen las ponderaciones del PMT metropolitano
+	gen w_agua_proveedor_beber	    =  0.0641587
+	gen w_combustible			    =  0.0966806
+	gen w_lndormitorios_pc			=  0.2744557
+	gen w_lntotpers					= -0.2250395
+	gen w_porc_0a14					= -0.3763890
+	gen w_porc_seguro				=  0.2448074
+	gen w_porc_trabajan				=  0.5972428
+	gen w_jefe_anios_estudio		=  0.0193651
+	gen w_jefe_cat_empleo			=  0.0516161
+	gen w_acondicionador_aire		=  0.1005476
+	gen w_auto_camion				=  0.1827654
+	gen w_cocina_elec				=  0.0552965
+	gen w_computadora				=  0.1038788
+	gen w_horno_microondas			=  0.0585011
+	gen w_lavarropas				=  0.0883653
+	gen w_tableta					=  0.1762143
+	gen w_termocalefon				=  0.2324976
+	gen w_tv_cable					=  0.1147233
+	gen constante       			=  13.673300
+
+//Luego, se define la linea de pobreza total y extrema estimada 
+//para el modelo metropolitano
+gen lpobtot_metro = 13.69732
+gen lpobext_metro = 13.17981
+
+//Despues, se calcula el ingreso estimado del hogar 
+gen lninc_est = constante + cat_agua_proveedor_beber*w_agua_proveedor_beber + cat_combustible*w_combustible + ///
+				hh_lndormitorios_pc*w_lndormitorios_pc + hh_lntotpers*w_lntotpers + hh_porc_0a14*w_porc_0a14 + ///
+				hh_porc_seguro*w_porc_seguro + hh_porc_trabajan*w_porc_trabajan + ///
+				jefe_anios_estudio*w_jefe_anios_estudio + jefe_cat_empleo*w_jefe_cat_empleo + ///
+				tiene_acondicionador_aire*w_acondicionador_aire + tiene_auto_camion*w_auto_camion + ///
+				tiene_cocina_elec*w_cocina_elec + tiene_computadora*w_computadora + ///
+				tiene_horno_microondas*w_horno_microondas + tiene_lavarropas*w_lavarropas + ///
+				tiene_tableta*w_tableta + tiene_termocalefon*w_termocalefon + tiene_tv_cable*w_tv_cable if jefe_anios_estudio!=. & tiene_termocalefon!=.
+				
+//Luego, identificamos el estatus de pobreza del hogar
+gen     status_pobreza=1 if lninc_est<lpobext_metro
+replace status_pobreza=2 if lninc_est>=lpobext_metro & lninc_est<lpobtot_metro
+replace status_pobreza=3 if lninc_est>=lpobtot_metro 
+
+label define st 1 "pobre extremo" 2 "pobre no extremo" 3 "no pobre"
+label value status_pobreza st 
+
+tab pobrezai [w=round(facpob)]
+tab status_pobreza [w=round(facpob)]
+gen dif = (pobrezai!=status_pobreza)
+
+*keep hhid upm nvivi nhoga dominio dpto area status_pobreza
+
+save "$results\pmt_metropolitano.dta", replace

@@ -1,0 +1,101 @@
+* Programa de Aplicacion del Proxy Mean Test para la Identificacion de Pobreza Monetaria
+* Ministerio de Desarrollo Social de Paraguay
+* Version: Enero 2020
+* Autora: Lyliana Gayoso de Ervin
+*===================================================================================================================
+	clear all
+	set more off
+	pause on
+
+/*=======================================================
+                    00: Directory setup                                             
+=========================================================*/
+	global dir      "C:\Users\lylig\Documents\Consultorias\2024\Unicef\Archivos Finales"
+	global results  "$dir\results"
+	global data     "$dir\data" 
+	
+	use "$results\IPM_PMT_base_2022_cleaned_vars.dta", clear
+	
+	*se restringe la base al dominio metropolitano
+	keep if dominio==6
+
+/*=======================================================
+           01: CONSTRUCCION DE INDICADORES DEL PMT
+=========================================================*/
+//creacion variables categoricas VIVIENDA
+gen cat_agua_proveedor=(tipo_agua_proveedor==1 | tipo_agua_proveedor==5 | tipo_agua_proveedor==10) if tipo_agua_proveedor!=.
+gen cat_banho_desague=(inrange(tipo_banho_desague,1,2)) if tipo_banho_desague!=.
+gen cat_basura=(inrange(tipo_basura,2,4) | tipo_basura==6 | tipo_basura==9) if tipo_basura!=.
+gen cat_combustible=(tipo_combustible==2 | tipo_combustible==7) if tipo_combustible!=.
+gen cat_hogar_unipersonal=(tipo_hogar==1) if tipo_hogar!=.
+gen cat_pared=(tipo_pared==4 | tipo_pared==5) if tipo_pared!=.
+
+//creacion variables categoricas JEFE
+gen jefe_cat_empleo= (inrange(jefe_tipo_empleo,1,3)) if jefe_tipo_empleo!=. 
+gen jefe_cat_idioma=(inrange(jefe_idioma,3,4)) if jefe_idioma!=.
+
+//creacion variables categoricas HOGAR
+gen hh_lndormitorios_pc=ln(nro_dormitorios/totpers)
+gen hh_lntotpers=ln(totpers)
+gen hh_porc_0a14 = (nro_5menos + nro_6a14)/totpers
+gen hh_porc_seguro=nro_tiene_seguro/totpers
+gen hh_porc_trabajan=nro_trabajo/totpers
+
+/*=======================================================
+              4: IMPLEMENTACION DEL PMT                                              
+=========================================================*/
+//Primero se definen las ponderaciones del PMT RURAL
+gen w_agua_proveedor	  =  0.2590669
+gen w_banho_desague		  =  0.0579613
+gen w_basura			  =  0.0779819
+gen w_combustible		  =  0.0855281
+gen w_hogar_unipersonal	  =  0.1605284
+gen w_pared				  =  0.0845166
+gen w_lndormitorios_pc	  =  0.1021776
+gen w_lntotpers			  = -0.2513625
+gen w_porc_0a14			  = -0.4980037
+gen w_porc_seguro		  =  0.3465624
+gen w_porc_trabajan		  =  0.4619435
+gen w_jefe_anios_estudio  =  0.0147913
+gen w_jefe_cat_empleo	  =  0.3076897
+gen w_jefe_cat_idioma	  =  0.1811722
+gen w_acondicionador_aire =	 0.1002157
+gen w_auto_camion		  =  0.1735345
+gen w_cocina_elec		  =  0.0957579
+gen w_cocina_gas	      =  0.1409634
+gen w_computadora	      =  0.1306783
+gen w_horno_electrico	  =  0.0714757
+gen w_horno_microondas	  =  0.1380380
+gen w_tv_cable			  =  0.0531819
+gen constante	          =  13.2046600
+
+//Luego, se define la linea de pobreza total y extrema estimada 
+//para el modelo rural
+gen lpobtot_rural = 13.2944100
+gen lpobext_rural = 12.9224800
+
+//Ahora, se calcula el ingreso estimado del hogar 
+gen lninc_est = constante + cat_agua_proveedor*w_agua_proveedor + cat_banho_desague*w_banho_desague + ///
+				cat_basura*w_basura + cat_combustible*w_combustible + cat_hogar_unipersonal*w_hogar_unipersonal + ///
+				cat_pared*w_pared + hh_lndormitorios_pc*w_lndormitorios_pc + hh_lntotpers*w_lntotpers + ///
+				hh_porc_0a14*w_porc_0a14 + hh_porc_seguro*w_porc_seguro + hh_porc_trabajan*w_porc_trabajan + ///
+				jefe_anios_estudio*w_jefe_anios_estudio + jefe_cat_empleo*w_jefe_cat_empleo + ///
+				jefe_cat_idioma*w_jefe_cat_idioma + tiene_acondicionador_aire*w_acondicionador_aire + ///
+				tiene_auto_camion*w_auto_camion + tiene_cocina_elec*w_cocina_elec + tiene_cocina_gas*w_cocina_gas + ///
+				tiene_computadora*w_computadora + tiene_horno_electrico*w_horno_electrico + ///
+				tiene_horno_microondas*w_horno_microondas + tiene_tv_cable*w_tv_cable
+				
+//Luego, identificamos el estatus de pobreza del hogar
+gen     status_pobreza=1 if lninc_est<=lpobext_rural
+replace status_pobreza=2 if lninc_est>lpobext_rural & lninc_est<=lpobtot_rural
+replace status_pobreza=3 if lninc_est>lpobtot_rural
+
+label define st 1 "pobre extremo" 2 "pobre no extremo" 3 "no pobre"
+label value status_pobreza st 
+
+tab pobrezai [w=round(facpob)]
+tab status_pobreza [w=round(facpob)]
+
+keep hhid upm nvivi nhoga upm nvivi nhoga dominio dpto area status_pobreza
+
+save "$results\pmt_rural.dta", replace
