@@ -8,38 +8,39 @@ END
 GO
 
 SELECT formulario,
-v01b   nro_dormitorios,
-v06    tipo_agua_proveedor_beber,
-v11    tipo_banho_desague,
-v12b   tipo_combustible,
-v1601  tiene_heladera,
-v1602  tiene_cocina_gas,
-v1603  tiene_cocina_elec,
-v1607  tiene_horno_microondas,
-v1609  tiene_auto_camion,
-v1605  tiene_acondicionador_aire,
-v15a1  tiene_computadora,
-p09    edad,
-p04    relacion_parentesco,
-p05    es_miembro_hogar,
-p11    estado_civil,
-s01    tiene_seguro,
-a02    trabajo_7dias,
-a03    trabajo_1hr,
-a04    trabajo_no_realizado,
-b06    tipo_empleo,
-ed01   idioma,
-tipohoga,
-a�oest,
-totpers,
-totmiem,
-CASE
-	WHEN (dpto = 0 OR dpto = 11) AND area = 1 THEN 0
-	WHEN area = 6 THEN 6
-	WHEN area = 1 THEN 1
-END AS dominio,
-area,
-dpto
+	v01b   nro_dormitorios,
+	v06    tipo_agua_proveedor_beber,
+	v11    tipo_banho_desague,
+	v12b   tipo_combustible,
+	v1601  tiene_heladera,
+	v1602  tiene_cocina_gas,
+	v1603  tiene_cocina_elec,
+	v1607  tiene_horno_microondas,
+	v1609  tiene_auto_camion,
+	v1605  tiene_acondicionador_aire,
+	v15a1  tiene_computadora,
+	p09    edad,
+	p04    relacion_parentesco,
+	p05    es_miembro_hogar,
+	p11    estado_civil,
+	s01    tiene_seguro,
+	a02    trabajo_7dias,
+	a03    trabajo_1hr,
+	a04    trabajo_no_realizado,
+	b06    tipo_empleo,
+	ed01   idioma,
+	tipohoga,
+	añoest,
+	totpers,
+	totmiem,
+	CASE
+		WHEN (dpto = 0 OR dpto = 11) AND area = 1 THEN 0
+		WHEN area = 6 THEN 6
+		WHEN area = 1 THEN 1
+	END AS dominio,
+	area,
+	dpto,
+'VIVIENDA' AS categoria
 INTO #PMT_RURAL
 FROM RSH_BASE
 WHERE CASE
@@ -134,10 +135,13 @@ GO
 SELECT formulario, area, dpto, dominio,
 relacion_parentesco as jefe,
 edad as jefe_edad,
-a�oest as jefe_anios_estudio,
+añoest as jefe_anios_estudio,
 idioma as jefe_idioma,
 tipo_empleo as jefe_tipo_empleo,
-estado_civil as jefe_estado_civil
+estado_civil as jefe_estado_civil,
+CASE WHEN tipo_empleo BETWEEN 1 AND 3 THEN 1 ELSE 0 END AS jefe_cat_empleo,
+CASE WHEN idioma BETWEEN 3 AND 4 THEN 1 ELSE 0 END AS jefe_cat_idioma,
+'JEFE' AS categoria
 INTO #jefe_tabla
 FROM #PMT_RURAL
 WHERE relacion_parentesco = 1
@@ -157,9 +161,15 @@ GO
 SELECT formulario, area, dpto, dominio,
 SUM(CASE WHEN edad >= 16 AND (trabajo_7dias = 1 OR trabajo_1hr = 1 OR trabajo_no_realizado = 1) THEN 1 ELSE 0 END) nro_trabajo,
 SUM(CASE WHEN edad <= 5 THEN 1 ELSE 0 END) nro_5menos,
-SUM(CASE WHEN edad > 5 AND edad <= 15 THEN 1 ELSE 0 END) nro_6a15,
+SUM(CASE WHEN edad > 5 AND edad <= 14 THEN 1 ELSE 0 END) nro_6a14,
 SUM(tiene_seguro) nro_tiene_seguro,
-AVG(totmiem) totmiem
+AVG(totmiem) totmiem,
+LOG(AVG(nro_dormitorios) / AVG(totpers)) AS hh_lndormitorios_pc,
+LOG(AVG(totpers)) AS hh_lntotpers,
+(SUM(CASE WHEN edad <= 5 THEN 1 ELSE 0 END) + SUM(CASE WHEN edad > 5 AND edad <= 14 THEN 1 ELSE 0 END)) / AVG(totpers) AS hh_porc_0a14,
+SUM(tiene_seguro) / AVG(totpers) AS hh_porc_seguro,
+SUM(CASE WHEN edad >= 16 AND (trabajo_7dias = 1 OR trabajo_1hr = 1 OR trabajo_no_realizado = 1) THEN 1 ELSE 0 END) / AVG(totpers) AS hh_porc_trabajan,
+'HOGAR' AS categoria
 INTO #demog_tabla
 FROM #PMT_RURAL
 GROUP BY formulario, area, dpto, dominio
@@ -174,17 +184,18 @@ GO
 
 SELECT formulario, area, dpto, dominio,
 AVG(nro_dormitorios) nro_dormitorios,
-AVG(tipo_agua_proveedor_beber) tipo_agua_proveedor_beber,
-AVG(tipo_banho_desague) tipo_banho_desague,
-AVG(tipo_combustible) tipo_combustible,
-AVG(tipohoga) tipohoga,
+CASE WHEN tipo_agua_proveedor_beber IN (1, 5, 10) THEN 1 ELSE 0 END AS cat_agua_proveedor,
+CASE WHEN tipo_banho_desague BETWEEN 1 AND 2 THEN 1 ELSE 0 END AS cat_banho_desague,
+CASE WHEN tipo_combustible IN (2, 7) THEN 1 ELSE 0 END AS cat_combustible,
+CASE WHEN tipohoga = 1 THEN 1 ELSE 0 END AS cat_hogar_unipersonal,
 AVG(tiene_heladera) tiene_heladera,
 AVG(tiene_cocina_elec) tiene_cocina_elec,
 AVG(tiene_cocina_gas) tiene_cocina_gas,
 AVG(tiene_horno_microondas) tiene_horno_microondas,
 AVG(tiene_acondicionador_aire) tiene_acondicionador_aire,
 AVG(tiene_computadora) tiene_computadora,
-AVG(tiene_auto_camion) tiene_auto_camion
+AVG(tiene_auto_camion) tiene_auto_camion,
+'VIVIENDA' AS categoria
 INTO #hogar_tabla
 FROM #PMT_RURAL
 GROUP BY formulario, area, dpto, dominio
@@ -197,11 +208,12 @@ BEGIN
 END
 GO
 
-SELECT ht.formulario, ht.area, ht.dpto, ht.dominio, ht.nro_dormitorios, ht.tipo_agua_proveedor_beber, ht.tipo_banho_desague,
-ht.tipo_combustible, ht.tipohoga, ht.tiene_heladera, ht.tiene_cocina_elec, ht.tiene_cocina_gas, ht.tiene_horno_microondas,
+SELECT ht.formulario, ht.area, ht.dpto, ht.dominio, ht.nro_dormitorios, ht.cat_agua_proveedor, ht.cat_banho_desague,
+ht.cat_combustible, ht.cat_hogar_unipersonal, ht.tiene_heladera, ht.tiene_cocina_elec, ht.tiene_cocina_gas, ht.tiene_horno_microondas,
 ht.tiene_acondicionador_aire, ht.tiene_computadora, ht.tiene_auto_camion,
 jt.jefe_idioma, jt.jefe_edad, jt.jefe_anios_estudio,jt.jefe_estado_civil,
-jt.jefe_tipo_empleo, dt.nro_trabajo, dt.nro_5menos, dt.nro_6a15, dt.nro_tiene_seguro, dt.totmiem
+jt.jefe_tipo_empleo, jt.jefe_cat_empleo, jt.jefe_cat_idioma,
+dt.nro_trabajo, dt.nro_5menos, dt.nro_6a14, dt.nro_tiene_seguro, dt.hh_lndormitorios_pc, dt.hh_lntotpers, dt.hh_porc_0a14, dt.hh_porc_seguro, dt.hh_porc_trabajan
 INTO #tabla_final
 FROM #hogar_tabla ht
 LEFT JOIN #demog_tabla dt
@@ -211,125 +223,54 @@ ON ht.formulario = jt.formulario AND ht.area = jt.area AND ht.dpto = jt.dpto AND
 GO
 
 ALTER TABLE #tabla_final
-ADD desague_cat1 INT NULL,
-desague_cat2 INT NULL,
-agua_proveedor_cat1 INT NULL,
-comb1 INT NULL,
-comb2 INT NULL,
-tipo_hogar1 INT NULL,
-jefe_guarani INT NULL,
-jefe_casdiv INT NULL,
-jefe_emp_1 INT NULL,
-jefe_emp_2 INT NULL,
-jefe_emp_3 INT NULL,
-jefe_emp_4 INT NULL,
-jefe_emp_5 INT NULL,
-jefe_emp_6 INT NULL,
-jefe_emp_7 INT NULL,
-porc_trabajan FLOAT NULL,
-porc_5menos FLOAT NULL,
-porc_6a15 FLOAT NULL,
-porc_seguro FLOAT NULL,
-lndormitorios_pc FLOAT NULL
-GO
-
-UPDATE #tabla_final
-SET
-desague_cat1 = CASE WHEN (tipo_banho_desague = 2) THEN 1 ELSE 0 END,
-desague_cat2 = CASE WHEN (tipo_banho_desague = 1 OR tipo_banho_desague = 3) THEN 1 ELSE 0 END,
-agua_proveedor_cat1 = CASE WHEN (tipo_agua_proveedor_beber = 5 ) THEN 1 ELSE 0 END,
-comb1 = CASE WHEN (tipo_combustible = 4) THEN 1 ELSE 0 END,
-comb2 = CASE WHEN (tipo_combustible = 2 OR tipo_combustible = 7) THEN 1 ELSE 0 END,
-tipo_hogar1 = CASE WHEN (tipohoga = 1 ) THEN 1 ELSE 0 END,
-jefe_guarani = CASE WHEN (jefe_idioma = 1) THEN 1 ELSE 0 END,
-jefe_casdiv  = CASE WHEN (jefe_estado_civil = 1 OR jefe_estado_civil = 6) THEN 1 ELSE 0 END,
-jefe_emp_1 = CASE WHEN (jefe_tipo_empleo = 1) THEN 1 ELSE 0 END,
-jefe_emp_2 = CASE WHEN (jefe_tipo_empleo = 2) THEN 1 ELSE 0 END,
-jefe_emp_3 = CASE WHEN (jefe_tipo_empleo = 3) THEN 1 ELSE 0 END,
-jefe_emp_4 = CASE WHEN (jefe_tipo_empleo = 4) THEN 1 ELSE 0 END,
-jefe_emp_5 = CASE WHEN (jefe_tipo_empleo = 5) THEN 1 ELSE 0 END,
-jefe_emp_6 = CASE WHEN (jefe_tipo_empleo = 6) THEN 1 ELSE 0 END,
-jefe_emp_7 = CASE WHEN (jefe_tipo_empleo = 7) THEN 1 ELSE 0 END,
-porc_trabajan = CAST(nro_trabajo AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_5menos = CAST(nro_5menos AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_6a15 = CAST(nro_6a15 AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_seguro = CAST(nro_tiene_seguro AS FLOAT) / CAST(totmiem AS FLOAT),
-lndormitorios_pc = LOG(CAST(nro_dormitorios AS FLOAT) / CAST(totmiem AS FLOAT))
-GO
-
---ESTABLECE LINEAS DE POBREZA MONETARIA
-ALTER TABLE #tabla_final
-ADD lpobtot_rural FLOAT NULL,
-lpobext_rural FLOAT NULL
-GO
-
-UPDATE #tabla_final
-SET lpobtot_rural = 13.09099,
-lpobext_rural = 12.67169
-GO
-
---APLICA EL PMT RURAL
-ALTER TABLE #tabla_final
-ADD lninc_est FLOAT NULL
-GO
-
-DECLARE @w_jefe_guarani  AS FLOAT = -0.1176130
-DECLARE @w_jefe_estudios AS FLOAT = 0.0105849
-DECLARE @w_jefe_casdiv   AS FLOAT = -0.0596137
-DECLARE @w_jefe_emp1     AS FLOAT = -0.2298794
-DECLARE @w_jefe_emp2	 AS FLOAT = -0.2118749
-DECLARE @w_jefe_emp4     AS FLOAT = -0.4626754
-DECLARE @w_jefe_emp5  	 AS FLOAT = -0.5527262
-DECLARE @w_jefe_emp6  	 AS FLOAT = -0.3388328
-DECLARE @w_jefe_emp7  	 AS FLOAT = -0.2823733
-DECLARE @w_m5menos		 AS FLOAT = -0.4020733
-DECLARE @w_m6a15 		 AS FLOAT = -0.2563933
-DECLARE @w_trabajan		 AS FLOAT =  0.7385175
-DECLARE @w_mseguro		 AS FLOAT =  0.3207612
-DECLARE @w_totmiem		 AS FLOAT = -0.0304550
-DECLARE @w_lndorms_pc	 AS FLOAT =  0.0895221
-DECLARE @w_tipohogar	 AS FLOAT =  0.2337155
-DECLARE @w_auto_camion   AS FLOAT =  0.2058292
-DECLARE @w_cocina_gas	 AS FLOAT =  0.0867773
-DECLARE @w_cocina_el	 AS FLOAT =  0.0958024
-DECLARE @w_heladera		 AS FLOAT =  0.1025391
-DECLARE @w_microondas    AS FLOAT =  0.1849850
-DECLARE @w_aire_acon     AS FLOAT =  0.2227899
-DECLARE @w_computadora	 AS FLOAT =  0.1360068
-DECLARE @w_comb1		 AS FLOAT =  0.1791524
-DECLARE @w_comb2		 AS FLOAT =  0.1384622
-DECLARE @w_desague1		 AS FLOAT =  0.1093759
-DECLARE @w_desague2		 AS FLOAT =  0.1208758
-DECLARE @w_aguaprov1	 AS FLOAT =  0.2307234
-DECLARE @constante       AS FLOAT = 13.3115000
-UPDATE #tabla_final
-SET lninc_est = @constante + jefe_guarani*@w_jefe_guarani + jefe_anios_estudio*@w_jefe_estudios + jefe_casdiv*@w_jefe_casdiv +
-                jefe_emp_1*@w_jefe_emp1 + jefe_emp_2*@w_jefe_emp2 + jefe_emp_4*@w_jefe_emp4 + jefe_emp_5*@w_jefe_emp5 +
-				jefe_emp_6*@w_jefe_emp6 + jefe_emp_7*@w_jefe_emp7 + porc_5menos*@w_m5menos + porc_6a15*@w_m6a15 + porc_trabajan*@w_trabajan +
-				porc_seguro*@w_mseguro  + totmiem*@w_totmiem + lndormitorios_pc*@w_lndorms_pc + tipo_hogar1*@w_tipohogar +
-				tiene_auto_camion*@w_auto_camion + tiene_cocina_gas*@w_cocina_gas + tiene_cocina_elec*@w_cocina_el +
-		        tiene_heladera*@w_heladera + tiene_horno_microondas*@w_microondas + tiene_acondicionador_aire*@w_aire_acon +
-				tiene_computadora*@w_computadora + comb1*@w_comb1 + comb2*@w_comb2 + @w_desague1*desague_cat1 + @w_desague2*desague_cat2 +
-				agua_proveedor_cat1*@w_aguaprov1
-GO
-
-ALTER TABLE #tabla_final
-ADD status_pobreza INT NULL,
+ADD lninc_est FLOAT NULL,
+status_pobreza INT NULL,
 status_pobreza_et VARCHAR(25) NULL
+GO
+
+DECLARE @w_cat_agua_proveedor FLOAT = 0.2590669
+DECLARE @w_cat_banho_desague FLOAT = 0.0579613
+DECLARE @w_cat_combustible FLOAT = 0.0855281
+DECLARE @w_cat_hogar_unipersonal FLOAT = 0.1605284
+DECLARE @w_hh_lndormitorios_pc FLOAT = 0.1021776
+DECLARE @w_hh_lntotpers FLOAT = -0.2513625
+DECLARE @w_hh_porc_0a14 FLOAT = -0.4980037
+DECLARE @w_hh_porc_seguro FLOAT = 0.3465624
+DECLARE @w_hh_porc_trabajan FLOAT = 0.4619435
+DECLARE @w_jefe_anios_estudio FLOAT = 0.0147913
+DECLARE @w_jefe_cat_empleo FLOAT = 0.3076897
+DECLARE @w_jefe_cat_idioma FLOAT = 0.1811722
+DECLARE @w_tiene_acondicionador_aire FLOAT = 0.1002157
+DECLARE @w_tiene_auto_camion FLOAT = 0.1735345
+DECLARE @w_tiene_cocina_elec FLOAT = 0.0957579
+DECLARE @w_tiene_cocina_gas FLOAT = 0.1409634
+DECLARE @w_tiene_computadora FLOAT = 0.1306783
+DECLARE @w_tiene_horno_microondas FLOAT = 0.1380380
+DECLARE @constante FLOAT = 13.2046600
+DECLARE @lpobtot_rural FLOAT = 13.2944100
+DECLARE @lpobext_rural FLOAT = 12.9224800
+
+UPDATE #tabla_final
+SET lninc_est = @constante + ht.cat_agua_proveedor*@w_cat_agua_proveedor + ht.cat_banho_desague*@w_cat_banho_desague +
+                ht.cat_combustible*@w_cat_combustible + ht.cat_hogar_unipersonal*@w_cat_hogar_unipersonal + dt.hh_lndormitorios_pc*@w_hh_lndormitorios_pc +
+                dt.hh_lntotpers*@w_hh_lntotpers + dt.hh_porc_0a14*@w_hh_porc_0a14 + dt.hh_porc_seguro*@w_hh_porc_seguro + dt.hh_porc_trabajan*@w_hh_porc_trabajan +
+                jt.jefe_anios_estudio*@w_jefe_anios_estudio + jt.jefe_cat_empleo*@w_jefe_cat_empleo + jt.jefe_cat_idioma*@w_jefe_cat_idioma +
+                ht.tiene_acondicionador_aire*@w_tiene_acondicionador_aire + ht.tiene_auto_camion*@w_tiene_auto_camion + ht.tiene_cocina_elec*@w_tiene_cocina_elec +
+                ht.tiene_cocina_gas*@w_tiene_cocina_gas + ht.tiene_computadora*@w_tiene_computadora + ht.tiene_horno_microondas*@w_tiene_horno_microondas
 GO
 
 UPDATE #tabla_final
 SET status_pobreza = CASE
-WHEN lninc_est <= lpobext_rural THEN 1
-WHEN lninc_est > lpobext_rural AND lninc_est <= lpobtot_rural THEN 2
-WHEN lninc_est > lpobtot_rural THEN 3 END,
-status_pobreza_et = CASE
-WHEN lninc_est <= lpobext_rural THEN 'pobre extremo'
-WHEN lninc_est > lpobext_rural  AND lninc_est <= lpobtot_rural THEN 'pobre no extremo'
-WHEN lninc_est > lpobtot_rural THEN 'no pobre monetario' END
+                        WHEN lninc_est <= @lpobext_rural THEN 1
+                        WHEN lninc_est > @lpobext_rural AND lninc_est <= @lpobtot_rural THEN 2
+                        ELSE 3 END,
+    status_pobreza_et = CASE
+                            WHEN lninc_est <= @lpobext_rural THEN 'pobre extremo'
+                            WHEN lninc_est > @lpobext_rural AND lninc_est <= @lpobtot_rural THEN 'pobre no extremo'
+                            ELSE 'no pobre' END
 GO
 
---GENERA TABLA FINAL PARA DOMINIO RURAL
+-- GENERAR LA TABLA FINAL
 IF OBJECT_ID('PMT_RURAL') IS NOT NULL
 BEGIN
     DROP TABLE PMT_RURAL
@@ -340,22 +281,28 @@ SELECT * INTO PMT_RURAL
 FROM #tabla_final
 GO
 
---ELIMINA TABLAS TEMPORALES
+-- LIMPIAR TABLAS TEMPORALES
+IF OBJECT_ID('tempdb..#PMT_RURAL') IS NOT NULL
+BEGIN
+    DROP TABLE #PMT_RURAL
+END
+GO
+
 IF OBJECT_ID('tempdb..#jefe_tabla') IS NOT NULL
 BEGIN
     DROP TABLE #jefe_tabla
 END
 GO
 
-IF OBJECT_ID('tempdb..#hogar_tabla') IS NOT NULL
-BEGIN
-    DROP TABLE #hogar_tabla
-END
-GO
-
 IF OBJECT_ID('tempdb..#demog_tabla') IS NOT NULL
 BEGIN
     DROP TABLE #demog_tabla
+END
+GO
+
+IF OBJECT_ID('tempdb..#hogar_tabla') IS NOT NULL
+BEGIN
+    DROP TABLE #hogar_tabla
 END
 GO
 
