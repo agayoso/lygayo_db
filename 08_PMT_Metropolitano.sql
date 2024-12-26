@@ -1,4 +1,3 @@
-
 USE RSH
 GO
 
@@ -9,42 +8,42 @@ END
 GO
 
 SELECT formulario,
-v01b   nro_dormitorios,
-v03    tipo_piso,
-v11    tipo_banho_desague,
-v09    tiene_linea_fija,
-v12b   tipo_combustible,
-v15a2  tiene_tableta,
-v15b   tiene_internet,
-v1604  tiene_termocalefon,
-v1608  tiene_horno_electrico,
-v1609  tiene_auto_camion,
-p09    edad,
-p04    relacion_parentesco,
-p05    es_miembro_hogar,
-s01    tiene_seguro,
-a02    trabajo_7dias,
-a03    trabajo_1hr,
-a04    trabajo_no_realizado,
-b06    tipo_empleo,
-ed01   idioma,
-tipohoga,
-a�oest,
-totpers,
-totmiem,
-CASE
-	WHEN (dpto = 0 OR dpto = 11) AND area = 1 THEN 0
-	WHEN area = 6 THEN 6
-	WHEN area = 1 THEN 1
-END AS dominio,
-area,
-dpto
+    v01b   nro_dormitorios,
+    v03    tipo_piso,
+    v11    tipo_banho_desague,
+    v09    tiene_linea_fija,
+    v12b   tipo_combustible,
+    v15a2  tiene_tableta,
+    v15b   tiene_internet,
+    v1604  tiene_termocalefon,
+    v1608  tiene_horno_electrico,
+    v1609  tiene_auto_camion,
+    p09    edad,
+    p04    relacion_parentesco,
+    p05    es_miembro_hogar,
+    s01    tiene_seguro,
+    a02    trabajo_7dias,
+    a03    trabajo_1hr,
+    a04    trabajo_no_realizado,
+    b06    tipo_empleo,
+    ed01   idioma,
+    tipohoga,
+    añoest,
+    totpers,
+    totmiem,
+    CASE
+        WHEN (dpto = 0 OR dpto = 11) AND area = 1 THEN 0
+        WHEN area = 6 THEN 6
+        WHEN area = 1 THEN 1
+    END AS dominio,
+    area,
+    dpto
 INTO #PMT_METROPOLITANO
 FROM RSH_BASE
 WHERE CASE
-	WHEN (dpto = 0 OR dpto = 11) AND area = 1 THEN 0
-	WHEN area = 6 THEN 6
-	WHEN area = 1 THEN 1
+    WHEN (dpto = 0 OR dpto = 11) AND area = 1 THEN 0
+    WHEN area = 6 THEN 6
+    WHEN area = 1 THEN 1
 END = 0 AND
 p05 = 1 AND
 p04 < 11
@@ -123,8 +122,10 @@ GO
 
 SELECT formulario, area, dpto, dominio,
 relacion_parentesco as jefe,
-a�oest as jefe_anios_estudio,
-tipo_empleo as jefe_tipo_empleo
+añoest as jefe_anios_estudio,
+tipo_empleo as jefe_tipo_empleo,
+CASE WHEN tipo_empleo BETWEEN 1 AND 3 THEN 1 ELSE 0 END AS jefe_cat_empleo,
+'JEFE' AS categoria
 INTO #jefe_tabla
 FROM #PMT_METROPOLITANO
 WHERE relacion_parentesco = 1
@@ -144,10 +145,16 @@ GO
 SELECT formulario, area, dpto, dominio,
 SUM(CASE WHEN edad >= 16 AND (trabajo_7dias = 1 OR trabajo_1hr = 1 OR trabajo_no_realizado = 1) THEN 1 ELSE 0 END) nro_trabajo,
 SUM(CASE WHEN edad <= 5 THEN 1 ELSE 0 END) nro_5menos,
-SUM(CASE WHEN edad > 5 AND edad <= 15 THEN 1 ELSE 0 END) nro_6a15,
-SUM(CASE WHEN edad >= 0 AND edad <= 15 THEN 1 ELSE 0 END) nro_0a15,
+SUM(CASE WHEN edad > 5 AND edad <= 14 THEN 1 ELSE 0 END) nro_6a14,
+SUM(CASE WHEN edad > 5 AND edad <= 15 THEN 1 ELSE 0 END) nro_0a15,
 SUM(tiene_seguro) nro_tiene_seguro,
-AVG(totmiem) totmiem
+AVG(totmiem) totmiem,
+LOG(AVG(nro_dormitorios) / AVG(totpers)) AS hh_lndormitorios_pc,
+LOG(AVG(totpers)) AS hh_lntotpers,
+(SUM(CASE WHEN edad <= 5 THEN 1 ELSE 0 END) + SUM(CASE WHEN edad > 5 AND edad <= 14 THEN 1 ELSE 0 END)) / AVG(totpers) AS hh_porc_0a14,
+SUM(tiene_seguro) / AVG(totpers) AS hh_porc_seguro,
+SUM(CASE WHEN edad >= 16 AND (trabajo_7dias = 1 OR trabajo_1hr = 1 OR trabajo_no_realizado = 1) THEN 1 ELSE 0 END) / AVG(totpers) AS hh_porc_trabajan,
+'HOGAR' AS categoria
 INTO #demog_tabla
 FROM #PMT_METROPOLITANO
 GROUP BY formulario, area, dpto, dominio
@@ -162,15 +169,16 @@ GO
 
 SELECT formulario, area, dpto, dominio,
 AVG(nro_dormitorios) nro_dormitorios,
-AVG(tipo_piso) tipo_piso,
-AVG(tipo_banho_desague) tipo_banho_desague,
-AVG(tipo_combustible) tipo_combustible,
+CASE WHEN tipo_combustible IN (2, 4, 7) THEN 1 ELSE 0 END AS cat_combustible,
+CASE WHEN tipo_piso IN (1, 2, 4) THEN 1 ELSE 0 END AS piso_cat,
+CASE WHEN tipo_banho_desague IN (1, 2, 3) THEN 1 ELSE 0 END AS desague_cat,
 AVG(tiene_linea_fija) tiene_linea_fija,
 AVG(tiene_tableta) tiene_tableta,
 AVG(tiene_internet) tiene_internet,
 AVG(tiene_termocalefon) tiene_termocalefon,
 AVG(tiene_horno_electrico) tiene_horno_electrico,
-AVG(tiene_auto_camion) tiene_auto_camion
+AVG(tiene_auto_camion) tiene_auto_camion,
+'VIVIENDA' AS categoria
 INTO #hogar_tabla
 FROM #PMT_METROPOLITANO
 GROUP BY formulario, area, dpto, dominio
@@ -183,11 +191,12 @@ BEGIN
 END
 GO
 
-SELECT ht.formulario, ht.area, ht.dpto, ht.dominio, ht.nro_dormitorios, ht.tipo_piso,
-ht.tipo_combustible, ht.tipo_banho_desague, ht.tiene_linea_fija, ht.tiene_termocalefon,
-ht.tiene_auto_camion, ht.tiene_horno_electrico, ht.tiene_tableta, ht.tiene_internet,
-jt.jefe_tipo_empleo, jt.jefe_anios_estudio,
-dt.nro_trabajo, dt.nro_5menos, dt.nro_6a15, dt.nro_0a15, dt.nro_tiene_seguro, dt.totmiem
+SELECT ht.formulario, ht.area, ht.dpto, ht.dominio, ht.nro_dormitorios, ht.piso_cat, ht.desague_cat,
+ht.cat_combustible, ht.tiene_linea_fija, ht.tiene_termocalefon, ht.tiene_auto_camion, ht.tiene_horno_electrico,
+ht.tiene_tableta, ht.tiene_internet,
+jt.jefe_tipo_empleo, jt.jefe_cat_empleo, jt.jefe_anios_estudio,
+dt.nro_trabajo, dt.nro_5menos, dt.nro_6a14, dt.nro_0a15, dt.nro_tiene_seguro, dt.hh_lndormitorios_pc, dt.hh_lntotpers,
+dt.hh_porc_0a14, dt.hh_porc_seguro, dt.hh_porc_trabajan
 INTO #tabla_final
 FROM #hogar_tabla ht
 LEFT JOIN #demog_tabla dt
@@ -197,93 +206,51 @@ ON ht.formulario = jt.formulario AND ht.area = jt.area AND ht.dpto = jt.dpto AND
 GO
 
 ALTER TABLE #tabla_final
-ADD piso_cat INT NULL,
-desague_cat INT NULL,
-comb_cat INT NULL,
-jefe_empleo_cat INT NULL,
-porc_trabajan FLOAT NULL,
-porc_5menos FLOAT NULL,
-porc_6a15 FLOAT NULL,
-porc_0a15 FLOAT NULL,
-porc_seguro FLOAT NULL,
-lndormitorios_pc FLOAT NULL,
-dpto_asu INT NULL
-GO
-
-UPDATE #tabla_final
-SET
-piso_cat = CASE WHEN (tipo_piso = 1 OR tipo_piso = 2 OR tipo_piso = 4) THEN 1 ELSE 0 END,
-desague_cat = CASE WHEN (tipo_banho_desague = 1 OR tipo_banho_desague = 2 OR tipo_banho_desague = 3) THEN 1 ELSE 0 END,
-comb_cat = CASE WHEN (tipo_combustible = 2 OR tipo_combustible = 4 OR tipo_combustible = 7) THEN 1 ELSE 0 END,
-jefe_empleo_cat = CASE WHEN (jefe_tipo_empleo = 1 OR jefe_tipo_empleo = 2 OR jefe_tipo_empleo = 3) THEN 1 ELSE 0 END,
-porc_trabajan = CAST(nro_trabajo AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_5menos = CAST(nro_5menos AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_6a15 = CAST(nro_6a15 AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_0a15 = CAST(nro_0a15 AS FLOAT) / CAST(totmiem AS FLOAT),
-porc_seguro = CAST(nro_tiene_seguro AS FLOAT) / CAST(totmiem AS FLOAT),
-lndormitorios_pc = LOG(CAST(nro_dormitorios AS FLOAT) / CAST(totmiem AS FLOAT)),
-dpto_asu = CASE WHEN (dpto = 0) THEN 1 ELSE 0 END
-GO
-
---ESTABLECE LINEAS DE POBREZA MONETARIA
-ALTER TABLE #tabla_final
-ADD lpobtot_metropolitano FLOAT NULL,
-lpobext_metropolitano FLOAT NULL
-GO
-
-UPDATE #tabla_final
-SET lpobtot_metropolitano = 13.46668,
-lpobext_metropolitano = 12.94958
-GO
-
---APLICA EL PMT METROPOLITANO
-ALTER TABLE #tabla_final
-ADD lninc_est FLOAT NULL
-GO
-
-DECLARE @w_jefe_empl	 AS FLOAT =  0.1413020
-DECLARE @w_jefe_estudio  AS FLOAT =  0.0196398
-DECLARE @w_trabajan		 AS FLOAT =  0.5197380
-DECLARE @w_mseguro		 AS FLOAT =  0.2188841
-DECLARE @w_m0a15 		 AS FLOAT = -0.4621517
-DECLARE @w_totmiem		 AS FLOAT = -0.0275831
-DECLARE @w_lndorms_pc	 AS FLOAT =  0.2857137
-DECLARE @w_termocalefon	 AS FLOAT =  0.1822855
-DECLARE @w_auto_camion   AS FLOAT =  0.1163685
-DECLARE @w_tableta		 AS FLOAT =  0.2281701
-DECLARE @w_internet      AS FLOAT =  0.1215253
-DECLARE @w_horno_el		 AS FLOAT =  0.0948192
-DECLARE @w_linea_fija	 AS FLOAT =  0.1788722
-DECLARE @w_comb			 AS FLOAT =  0.1287907
-DECLARE @w_piso			 AS FLOAT = -0.0904969
-DECLARE @w_desague		 AS FLOAT =  0.1657502
-DECLARE @w_asu			 AS FLOAT =  0.1901746
-DECLARE @constante       AS FLOAT = 13.446070
-UPDATE #tabla_final
-SET lninc_est = @constante + jefe_empleo_cat*@w_jefe_empl + jefe_anios_estudio*@w_jefe_estudio + porc_trabajan*@w_trabajan +
-                porc_seguro*@w_mseguro + porc_0a15*@w_m0a15 + totmiem*@w_totmiem + lndormitorios_pc*@w_lndorms_pc +
-				tiene_termocalefon*@w_termocalefon + tiene_auto_camion*@w_auto_camion + tiene_tableta*@w_tableta +
-				tiene_internet*@w_internet + tiene_horno_electrico*@w_horno_el + tiene_linea_fija*@w_linea_fija +
-				comb_cat*@w_comb + piso_cat*@w_piso + desague_cat*@w_desague + dpto_asu*@w_asu
-GO
-
-ALTER TABLE #tabla_final
-ADD status_pobreza INT NULL,
+ADD lninc_est FLOAT NULL,
+status_pobreza INT NULL,
 status_pobreza_et VARCHAR(25) NULL
+GO
+
+DECLARE @constante FLOAT = 13.673300
+DECLARE @lpobtot_metro FLOAT = 13.69732
+DECLARE @lpobext_metro FLOAT = 13.17981
+DECLARE @w_piso FLOAT = -0.0904969
+DECLARE @w_combustible FLOAT = 0.0966806
+DECLARE @w_desague FLOAT = 0.1657502
+DECLARE @w_trabajan FLOAT = 0.5972428
+DECLARE @w_seguro FLOAT = 0.2448074
+DECLARE @w_0a14 FLOAT = -0.3763890
+DECLARE @w_totmiem FLOAT = -0.2250395
+DECLARE @w_lndorm_pc FLOAT = 0.2744557
+DECLARE @w_jefe_empleo FLOAT = 0.0516161
+DECLARE @w_jefe_estudio FLOAT = 0.0193651
+DECLARE @w_termocalefon FLOAT = 0.2324976
+DECLARE @w_auto_camion FLOAT = 0.1827654
+DECLARE @w_tableta FLOAT = 0.1762143
+DECLARE @w_internet FLOAT = 0.1215253
+DECLARE @w_horno_elec FLOAT = 0.0585011
+DECLARE @w_linea_fija FLOAT = 0.1788722
+
+UPDATE #tabla_final
+SET lninc_est = @constante + ht.piso_cat*@w_piso + ht.cat_combustible*@w_combustible + ht.desague_cat*@w_desague +
+                dt.hh_porc_trabajan*@w_trabajan + dt.hh_porc_seguro*@w_seguro + dt.hh_porc_0a14*@w_0a14 +
+                dt.hh_lntotpers*@w_totmiem + dt.hh_lndormitorios_pc*@w_lndorm_pc + jt.jefe_cat_empleo*@w_jefe_empleo +
+                jt.jefe_anios_estudio*@w_jefe_estudio + ht.tiene_termocalefon*@w_termocalefon + ht.tiene_auto_camion*@w_auto_camion +
+                ht.tiene_tableta*@w_tableta + ht.tiene_internet*@w_internet + ht.tiene_horno_electrico*@w_horno_elec + ht.tiene_linea_fija*@w_linea_fija
 GO
 
 UPDATE #tabla_final
 SET status_pobreza = CASE
-WHEN lninc_est <= lpobext_metropolitano THEN 1
-WHEN lninc_est > lpobext_metropolitano AND lninc_est <= lpobtot_metropolitano THEN 2
-WHEN lninc_est > lpobtot_metropolitano THEN 3 END,
-status_pobreza_et = CASE
-WHEN lninc_est <= lpobext_metropolitano THEN 'pobre extremo'
-WHEN lninc_est > lpobext_metropolitano  AND lninc_est <= lpobtot_metropolitano THEN 'pobre no extremo'
-WHEN lninc_est > lpobtot_metropolitano THEN 'no pobre monetario' END
+                        WHEN lninc_est < @lpobext_metro THEN 1
+                        WHEN lninc_est >= @lpobext_metro AND lninc_est < @lpobtot_metro THEN 2
+                        ELSE 3 END,
+    status_pobreza_et = CASE
+                            WHEN lninc_est < @lpobext_metro THEN 'pobre extremo'
+                            WHEN lninc_est >= @lpobext_metro AND lninc_est < @lpobtot_metro THEN 'pobre no extremo'
+                            ELSE 'no pobre' END
 GO
 
---GENERA TABLA FINAL PARA DOMINIO METROPOLITANO
+-- GENERAR LA TABLA FINAL PARA EL DOMINIO METROPOLITANO
 IF OBJECT_ID('PMT_METROPOLITANO') IS NOT NULL
 BEGIN
     DROP TABLE PMT_METROPOLITANO
@@ -294,22 +261,28 @@ SELECT * INTO PMT_METROPOLITANO
 FROM #tabla_final
 GO
 
---ELIMINA TABLAS TEMPORALES
+-- LIMPIAR TABLAS TEMPORALES
+IF OBJECT_ID('tempdb..#PMT_METROPOLITANO') IS NOT NULL
+BEGIN
+    DROP TABLE #PMT_METROPOLITANO
+END
+GO
+
 IF OBJECT_ID('tempdb..#jefe_tabla') IS NOT NULL
 BEGIN
     DROP TABLE #jefe_tabla
 END
 GO
 
-IF OBJECT_ID('tempdb..#hogar_tabla') IS NOT NULL
-BEGIN
-    DROP TABLE #hogar_tabla
-END
-GO
-
 IF OBJECT_ID('tempdb..#demog_tabla') IS NOT NULL
 BEGIN
     DROP TABLE #demog_tabla
+END
+GO
+
+IF OBJECT_ID('tempdb..#hogar_tabla') IS NOT NULL
+BEGIN
+    DROP TABLE #hogar_tabla
 END
 GO
 
