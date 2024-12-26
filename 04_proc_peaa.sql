@@ -1,0 +1,16 @@
+USE RSH
+GO
+
+ALTER TABLE RSH_BASE
+ADD peaa INT NULL
+GO
+
+UPDATE RSH_BASE
+SET peaa = CASE
+WHEN (a02 = 1 OR a03 = 1 OR a04 = 1) THEN 1
+WHEN (a02 = 6 AND a03 = 6 AND a04 = 6 AND a05 = 1 AND a07 = 1) THEN 2
+WHEN (a02 = 6 AND a03 = 6 AND a04 = 6 AND a05 = 1 AND a07 = 6) AND (a09 >= 8 AND a09 <= 11) THEN 2
+WHEN (a02 = 6 AND a03 = 6 AND a04 = 6 AND a05 = 1 AND a07 = 6) AND ((a09 >= 1 AND a09 <= 7) OR (a09 >= 12 AND a09 <= 18)) THEN 3
+END
+GO
+
